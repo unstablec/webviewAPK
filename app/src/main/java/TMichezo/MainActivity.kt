@@ -1,12 +1,12 @@
-package com.example.tbet
+package TMichezo
 
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.view.Window
 import android.webkit.*
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
+import com.example.tbet.R
 
 
 class MainActivity : AppCompatActivity() {
