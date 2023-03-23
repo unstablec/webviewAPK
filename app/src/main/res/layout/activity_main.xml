@@ -17,7 +17,7 @@
             android:layout_height="match_parent"
             android:layout_centerInParent="true"
 
-            android:src="@drawable/tmichezo_logo"
+            android:src="@drawable/tmichezo_logo_svg"
             android:visibility="visible"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
