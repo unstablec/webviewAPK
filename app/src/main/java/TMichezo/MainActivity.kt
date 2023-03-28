@@ -1,14 +1,21 @@
 package TMichezo
 
+import android.Manifest
+import android.app.DownloadManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.view.View
 import android.webkit.*
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.tbet.R
 import okhttp3.*
 import org.json.JSONObject
@@ -87,24 +94,39 @@ class MainActivity : AppCompatActivity() {
                         val json = JSONObject(response.body!!.string());
                         println(json);
 
-
                         val builder = AlertDialog.Builder(view.context)
                         builder.setTitle("Tu aplicacion esta desactualizada")
                         builder.setMessage("En el bosque de la china la chinita se peldio")
                         builder.setPositiveButton("Actualizar") { dialog, which ->
-
+                            shouldOverrideUrlLoading(view);
                         }
                         builder.setNegativeButton("Continuar sin actualizar") { dialog, which ->
                             // Acción al hacer clic en el botón "Cancelar"
                         }
                         val dialog = builder.create()
-                        dialog.show()
-                        //val necesitaActualizar = json.getBoolean("necesita_actualizar")
+                        dialog.show();
 
-                        // Realizar acciones según la respuesta
                     }
                 }
             }
         })
+    }
+
+    fun shouldOverrideUrlLoading(view: WebView): Boolean {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
+        }
+        val url = "https://tbet.co.tz/downloads/tbet.apk";
+        val request = DownloadManager.Request(Uri.parse(url))
+        request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
+        request.setTitle("Descarga de APK")
+        request.setDescription("Descargando...")
+        request.setMimeType("application/vnd.android.package-archive")
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "nombre_del_archivo.apk")
+        val downloadManager = view.context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        downloadManager.enqueue(request)
+        return true
+        
     }
 }
