@@ -3,6 +3,8 @@ package TMichezo
 import android.Manifest
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Uri
@@ -12,25 +14,42 @@ import android.os.Environment
 import android.view.View
 import android.webkit.*
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.tbet.R
+import com.google.gson.Gson
 import okhttp3.*
 import org.json.JSONObject
 import java.io.IOException
+import java.util.*
 
 
 class MainActivity : AppCompatActivity() {
+
+    private lateinit var sharedPreferences: SharedPreferences
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState);
+
+        sharedPreferences = getSharedPreferences("myPreferences", Context.MODE_PRIVATE)
+        var versionAppInstall = VersionApp(1,"0.5.0",UpgradeType.Minor,"First release","2023-03-27T20:49:28.680665Z","2023-03-27T20:49:28.680665Z",);
 
         setContentView(R.layout.activity_main)
 
 
         val webView = findViewById<WebView>(R.id.web);
-        getStatusVersionAppHttp(webView);
+
+        val thisIsAppOld = sharedPreferences.getBoolean("thisIsOldApp",false);
+        if(!thisIsAppOld){
+
+            getStatusVersionAppHttp(webView, versionAppInstall);
+        }else{
+            showModal(webView,"La nueva version de la app ha sido descargada","Puedes encontrarla en tu carpeta de descargas en un administrador de archivos en el menu de tu telefono, debes desinstalar manualmente esta version", false, false,true)
+        }
+
         webView.webChromeClient = object : WebChromeClient(){};
         webView.webViewClient = object : WebViewClient(){};
 
@@ -74,8 +93,8 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    fun getStatusVersionAppHttp(view: WebView) {
-        val url = "https://jsonplaceholder.typicode.com/todos/1";
+    fun getStatusVersionAppHttp(view: WebView, versionAppInstall: VersionApp) {
+        val url = "https://core.koperca.com:7777/";
         val client = OkHttpClient()
         val request = Request.Builder()
             .url(url)
@@ -91,20 +110,37 @@ class MainActivity : AppCompatActivity() {
                     response.use {
                         if (!response.isSuccessful) throw IOException("Unexpected code $response")
 
-                        val json = JSONObject(response.body!!.string());
-                        println(json);
+                        val gson = Gson();
+                        val json = JSONObject(response.body!!.string()).toString();
+                        val versionAppResponse = gson.fromJson(json, VersionApp::class.java);
 
-                        val builder = AlertDialog.Builder(view.context)
-                        builder.setTitle("Tu aplicacion esta desactualizada")
-                        builder.setMessage("En el bosque de la china la chinita se peldio")
-                        builder.setPositiveButton("Actualizar") { dialog, which ->
-                            shouldOverrideUrlLoading(view);
+                        //con esta condicional valido que la version instalada sea menor que la de la respuesta
+                        if(compareVersions(versionAppInstall.latest, versionAppResponse.latest).equals(-1)){
+
+                            val isUpdateMinor = versionAppResponse.upgrade_type.equals(UpgradeType.Minor)
+
+                            // esta es una validacion para saber el grado de la actualizacion si es una actualizacion menor
+                            if(isUpdateMinor){
+                                val expirationDateMillis = sharedPreferences.getLong("expirationDate", -1);
+
+                                // con esto valido que existe una fecha guardada
+                                if (expirationDateMillis != -1L){
+
+                                    val currentDate = Calendar.getInstance()
+                                    // Validar si la fecha de expiración ha pasado
+                                    if (currentDate.timeInMillis >= expirationDateMillis) {
+                                        // accion a ejecutar cuando ya se vencio la fecha
+                                        showModal(view,"Tu aplicacion esta desactualizada","En el bosque de la china la chinita se peldio", true, isUpdateMinor,false)
+                                    }
+                                }else{
+                                    showModal(view,"Tu aplicacion esta desactualizada","En el bosque de la china la chinita se peldio", true, isUpdateMinor,false)
+                                }
+                            }else{
+                                showModal(view,"Tu aplicacion esta desactualizada","En el bosque de la china la chinita se peldio", true, isUpdateMinor,false)
+                            }
+
                         }
-                        builder.setNegativeButton("Continuar sin actualizar") { dialog, which ->
-                            // Acción al hacer clic en el botón "Cancelar"
-                        }
-                        val dialog = builder.create()
-                        dialog.show();
+
 
                     }
                 }
@@ -112,21 +148,88 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    fun shouldOverrideUrlLoading(view: WebView): Boolean {
+    fun showModal(view: WebView, title: String, message: String, isButtomUpdate: Boolean, isButtonContinue: Boolean, isButtonDelete: Boolean) {
+        val builder = AlertDialog.Builder(view.context)
+        builder.setTitle(title)
+        builder.setMessage(message)
+
+
+       if (isButtomUpdate){
+           builder.setPositiveButton("Actualizar") { dialog, which ->
+               shouldOverrideUrlLoading(view);
+           }
+       }
+
+        if(isButtonContinue){
+            builder.setNegativeButton("Continuar sin actualizar") { dialog, which ->
+
+                // establecer tiempo de expiracion de la fecha
+                val expirationDate = Calendar.getInstance()
+                expirationDate.add(Calendar.WEEK_OF_YEAR, 1)
+                //expirationDate.add(Calendar.HOUR_OF_DAY, 1)
+                sharedPreferences.edit().putLong("expirationDate", expirationDate.timeInMillis).apply()
+            }
+        }
+
+        if (isButtonDelete){
+            builder.setPositiveButton("Ir a descargas") { dialog, which ->
+                sharedPreferences.edit().putBoolean("thisIsOldApp", true).apply();
+
+                val downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val intent = Intent(Intent.ACTION_VIEW)
+                intent.setDataAndType(Uri.parse(downloadsFolder.path), "resource/folder")
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                intent.type = "resource/folder"
+                intent.setDataAndType(Uri.parse(Environment.getExternalStorageDirectory().toString() + "/Download/"), "file/*")
+
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(Intent.createChooser(intent, "Open Downloads"))
+                } else {
+                    Toast.makeText(this, "No se pudo abrir la carpeta de descargas", Toast.LENGTH_SHORT).show()
+                }
+                finish()
+            }
+        }
+
+        val dialog = builder.create()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show();
+    }
+
+    fun shouldOverrideUrlLoading(view: WebView) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
         }
         val url = "https://tbet.co.tz/downloads/tbet.apk";
         val request = DownloadManager.Request(Uri.parse(url))
         request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
-        request.setTitle("Descarga de APK")
+        request.setTitle("Descarga de TBet APP")
         request.setDescription("Descargando...")
         request.setMimeType("application/vnd.android.package-archive")
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "nombre_del_archivo.apk")
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "tbet_app.apk")
         val downloadManager = view.context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         downloadManager.enqueue(request)
-        return true
-        
+
+        showModal(view,"La nueva version de la app ha sido descargada","Puedes encontrarla en tu carpeta de descargas en un administrador de archivos en el menu de tu telefono, debes desinstalar manualmente esta version", false, false,true)
+    }
+
+
+    fun compareVersions(v1: String, v2: String): Int {
+        val v1List = v1.split(".").map { it.toInt() }
+        val v2List = v2.split(".").map { it.toInt() }
+
+        // iterate over the elements of the lists and compare them
+        for (i in 0 until minOf(v1List.size, v2List.size)) {
+            if (v1List[i] < v2List[i]) return -1
+            if (v1List[i] > v2List[i]) return 1
+        }
+
+        // if we get here, the common elements are equal, so the longer list is greater
+        return when {
+            v1List.size < v2List.size -> -1
+            v1List.size > v2List.size -> 1
+            else -> 0
+        }
     }
 }
