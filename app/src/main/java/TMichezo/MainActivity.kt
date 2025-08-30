@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.view.View
 import android.webkit.*
 import android.widget.LinearLayout
@@ -30,11 +31,17 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
 
     private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var proxyManager: ProxyManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState);
 
         sharedPreferences = getSharedPreferences("myPreferences", Context.MODE_PRIVATE)
+        proxyManager = ProxyManager(this)
+        
+        // Initialize default proxy configuration
+        proxyManager.initializeDefaultProxy()
+        
         var versionAppInstall = VersionApp(1,"0.5.0",UpgradeType.Minor,"First release","2023-03-27T20:49:28.680665Z","2023-03-27T20:49:28.680665Z",);
 
         setContentView(R.layout.activity_main)
@@ -51,7 +58,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient(){};
-        webView.webViewClient = object : WebViewClient(){};
+        
+        // Configure proxy for WebView
+        proxyManager.configureWebViewProxy(webView)
+        
+        // Use custom WebViewClient with proxy support
+        webView.webViewClient = ProxyWebViewClient(proxyManager)
 
         val webSettings: WebSettings = webView.getSettings();
         val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager;
@@ -81,15 +93,20 @@ class MainActivity : AppCompatActivity() {
 
         val splashScreen = findViewById<LinearLayout>(R.id.splash_screen_layout);
 
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                splashScreen.visibility = View.GONE
-                webView.visibility = View.VISIBLE
+        // Test proxy connection before loading the main URL
+        proxyManager.testProxyConnection { success, message ->
+            runOnUiThread {
+                if (success) {
+                    Log.d("MainActivity", "Proxy test successful: $message")
+                    // Load the main URL through proxy
+                    webView.loadUrl("https://senkuro.com/")
+                } else {
+                    Log.w("MainActivity", "Proxy test failed: $message")
+                    // Fallback to direct connection
+                    webView.loadUrl("https://tmichezo.co.tz/")
+                }
             }
         }
-
-        webView.loadUrl("https://tmichezo.co.tz/");
     }
 
 
